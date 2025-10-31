@@ -2,7 +2,7 @@ import datetime as dt
 from typing import Optional
 from dash import dcc, html, dash_table
 
-from . import config
+from .config import get_settings
 from .auth import current_claims
 from .data import get_data
 
@@ -11,7 +11,7 @@ class UIBuilder:
     """Class that encapsulates layout building logic."""
 
     def __init__(self, title: Optional[str] = None) -> None:
-        self.title = title or config.APP_TITLE
+        self.title = title or get_settings().app_title
 
     @staticmethod
     def kpi_card(label, value, id_suffix):
@@ -140,12 +140,6 @@ class UIBuilder:
 
             html.Div(id="debug-msg", style={"fontSize": "12px", "color": "#999", "marginTop": "6px"}),
 
-            # Light styles
-            html.Style("""
-                body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-                .kpi-label { color: #666; font-size: 12px; }
-                .kpi-value { font-weight: 700; font-size: 20px; margin-top: 4px; }
-            """),
         ])
 
 

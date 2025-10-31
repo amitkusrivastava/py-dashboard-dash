@@ -1,0 +1,4 @@
+/* Global styles for the dashboard (served automatically by Dash from /assets) */
+body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+.kpi-label { color: #666; font-size: 12px; }
+.kpi-value { font-weight: 700; font-size: 20px; margin-top: 4px; }

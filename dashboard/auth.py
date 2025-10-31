@@ -102,5 +102,14 @@ def current_claims():
     return _auth_service.current_claims()
 
 
-def init_auth(server: Flask) -> None:
+def init_auth(server: Flask, settings: Optional[Settings] = None) -> None:
+    """Initialize authentication on the Flask server.
+    
+    Args:
+        server: Flask server instance
+        settings: Optional Settings; defaults to get_settings() if not provided
+    """
+    global _auth_service
+    if settings is not None:
+        _auth_service.settings = settings
     _auth_service.init_app(server)

@@ -1,12 +1,12 @@
 import datetime as dt
 import time
-from typing import List, Dict, Any, Optional, Literal
+from typing import List, Optional, Literal
 
 import pandas as pd
 from dash import Input, Output, State, no_update
 from pydantic import BaseModel, field_validator, ValidationError
 
-from . import config
+from .config import get_settings
 from .data import get_data
 from .utils import today_key, fmt_money
 
@@ -42,26 +42,56 @@ class Filters(BaseModel):
 
 
 def _filter_df(df: pd.DataFrame,
-               start_date, end_date, products, regions, systems, teams, min_profit, owner_query) -> pd.DataFrame:
+               start_date: Optional[str],
+               end_date: Optional[str],
+               products: Optional[List[str]],
+               regions: Optional[List[str]],
+               systems: Optional[List[str]],
+               teams: Optional[List[str]],
+               min_profit: Optional[float],
+               owner_query: Optional[str]) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+        # Build a combined boolean mask for efficiency
+    mask = pd.Series([True] * len(df), index=df.index)
+
     if start_date:
-        df = df[df["date"] >= pd.to_datetime(start_date).date()]
+        try:
+            start_dt = pd.to_datetime(start_date).date()
+            mask &= df["date"] >= start_dt
+        except Exception as e:
+            raise ValueError(f"Invalid start_date format: {start_date}") from e
+
     if end_date:
-        df = df[df["date"] <= pd.to_datetime(end_date).date()]
-    if products:
-        df = df[df["product"].isin(products)]
+        try:
+            end_dt = pd.to_datetime(end_date).date()
+            mask &= df["date"] <= end_dt
+        except Exception as e:
+            raise ValueError(f"Invalid end_date format: {end_date}") from e
+
+    if products:  # Only filter if list is non-empty
+        mask &= df["product"].isin(products)
+
     if regions:
-        df = df[df["region"].isin(regions)]
+        mask &= df["region"].isin(regions)
+
     if systems:
-        df = df[df["system"].isin(systems)]
+        mask &= df["system"].isin(systems)
+
     if teams:
-        df = df[df["team"].isin(teams)]
+        mask &= df["team"].isin(teams)
+
     if owner_query:
         q = owner_query.strip().lower()
-        df = df[df["owner"].str.lower().str.contains(q, na=False)]
-    if min_profit is not None:
-        df = df[df["profit"] >= float(min_profit)]
-    return df
+        if q:  # Only apply if non-empty after stripping
+            # Ensure owner column is string type
+            mask &= df["owner"].astype(str).str.lower().str.contains(q, na=False, regex=False)
 
+    if min_profit is not None:
+        mask &= df["profit"] >= float(min_profit)
+
+    return df[mask]
 
 def register_callbacks(app):
 
@@ -91,7 +121,7 @@ def register_callbacks(app):
             df = df[df["team"] == team].copy()
 
         data_json = df.to_dict(orient="records")
-        msg = f"Rows available: {len(df)} | Source: {config.DATA_SOURCE} | Role: {role}" + (f" | Team: {team}" if team else "")
+        msg = f"Rows available: {len(df)} | Source: {get_settings().data_source} | Role: {role}" + (f" | Team: {team}" if team else "")
         return data_json, msg
 
     @app.callback(
@@ -144,6 +174,8 @@ def register_callbacks(app):
             return "—", "—", "—", "—", empty_fig, empty_fig, empty_fig, empty_fig, []
 
         df = pd.DataFrame.from_records(data_json)
+        # After JSON deserialization, date column is strings; convert back to date objects
+        df["date"] = pd.to_datetime(df["date"]).dt.date
         fdf = _filter_df(df, flt.start_date, flt.end_date, flt.products, flt.regions, flt.systems, flt.teams, flt.min_profit, flt.owner_query)
 
         # KPIs

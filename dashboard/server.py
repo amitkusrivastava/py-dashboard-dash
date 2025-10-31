@@ -11,6 +11,7 @@ class ServerFactory:
     """Class-based factory for Flask server, Cache, and Dash app."""
 
     def __init__(self, settings: Optional[Settings] = None) -> None:
+        # Initialize settings once, defaulting to .env + env vars
         self.settings = settings or get_settings()
 
     def create_server(self) -> Flask:
@@ -41,15 +42,17 @@ class ServerFactory:
         return app
 
 
-# Backward-compatible function wrappers
+# Backward-compatible function wrappers using a shared factory instance
+_factory = ServerFactory()
+
 
 def create_server() -> Flask:
-    return ServerFactory().create_server()
+    return _factory.create_server()
 
 
 def create_cache(server: Flask) -> Cache:
-    return ServerFactory().create_cache(server)
+    return _factory.create_cache(server)
 
 
 def create_app(server: Flask) -> Dash:
-    return ServerFactory().create_app(server)
+    return _factory.create_app(server)

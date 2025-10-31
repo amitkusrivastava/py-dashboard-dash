@@ -1,54 +1,28 @@
-import os
 from pathlib import Path
 from typing import Optional, Literal
 
-from dotenv import dotenv_values
-from pydantic import BaseModel, Field, field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # =========================
 # Configuration (ENV-DRIVEN via Pydantic)
 # =========================
 
-class _EnvLoader:
-    """Helper to preload layered .env files into os.environ.
-
-    Real environment variables always win; we only set values that are not already present.
-    Among files, precedence is (lowest to highest):
-      .env  <  .env.dev  <  .env.{APP_ENV}  <  .env.local  <  .env.{APP_ENV}.local
-    APP_ENV defaults to "development"; "dev" is an alias for "development".
-    """
-
-    @staticmethod
-    def load() -> None:
-        _app_env_raw = os.getenv("APP_ENV", "development").lower()
-        _app_env = "development" if _app_env_raw in {"dev", "development"} else _app_env_raw
-        project_root = Path(__file__).resolve().parent.parent
-        env_files = [
-            project_root / ".env",
-            project_root / ".env.dev",
-            project_root / f".env.{_app_env}",
-            project_root / ".env.local",
-            project_root / f".env.{_app_env}.local",
-        ]
-        merged: dict[str, str] = {}
-        for p in env_files:
-            if p.exists():
-                vals = dotenv_values(p)
-                if vals:
-                    merged.update({k: v for k, v in vals.items() if v is not None})
-        for k, v in merged.items():
-            if k not in os.environ and v is not None:
-                os.environ[k] = v
-
 
 class Settings(BaseSettings):
     """Application settings read from environment and validated by Pydantic.
 
-    We rely on `_EnvLoader.load()` to provide layered .env behavior, then Pydantic reads from os.environ.
+    Simplified: Only a single `.env` file at the project root is read. Real environment
+    variables always take precedence over `.env` values. No layered env resolution.
     """
 
-    model_config = SettingsConfigDict(extra="ignore", case_sensitive=False)
+    # Read from .env at the project root; environment variables override.
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        case_sensitive=False,
+        env_file=str(Path(__file__).resolve().parent.parent / ".env"),
+        env_file_encoding="utf-8",
+    )
 
     # App/UI
     app_title: str = Field(default="Enterprise Analytics Dashboard", alias="APP_TITLE")
@@ -79,30 +53,19 @@ class Settings(BaseSettings):
             return v.upper()
         return v
 
-    @classmethod
-    def from_env(cls) -> "Settings":
-        # Preload layered env files, then let Pydantic read/validate from os.environ
-        _EnvLoader.load()
-        return cls()  # type: ignore[call-arg]
+
+# Singleton accessor to avoid repeated disk reads/parsing
+_settings_singleton: Optional[Settings] = None
 
 
-# Backward-compatible module-level constants via a singleton Settings
-_settings = Settings.from_env()
+def get_settings() -> Settings:
+    """Get the singleton Settings instance, initializing it on first call."""
+    global _settings_singleton
+    if _settings_singleton is None:
+        _settings_singleton = Settings()
+    return _settings_singleton
 
-APP_TITLE = _settings.app_title
-DATA_SOURCE = _settings.data_source
-API_BASE_URL = _settings.api_base_url
-DB_URL = _settings.db_url
-JWT_SECRET = _settings.jwt_secret
-JWT_ISSUER = _settings.jwt_issuer
-JWT_AUDIENCE = _settings.jwt_audience
-DISABLE_AUTH = _settings.disable_auth
-CACHE_TYPE = _settings.cache_type
-CACHE_TIMEOUT_SECONDS = _settings.cache_timeout_seconds
-MAX_ROWS = _settings.max_rows
-REDIS_URL = _settings.redis_url
-PORT = _settings.port
-DEBUG = _settings.debug
 
-# Public helper to get the Settings object when class-based access is preferred
-get_settings = lambda: _settings
+# Convenience module-level constants used by app.py when running as a script
+PORT: int = get_settings().port
+DEBUG: bool = get_settings().debug
